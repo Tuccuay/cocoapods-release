@@ -37,18 +37,24 @@ module Pod
 
         specs = specs.reverse if @reverse
 
+        sources_manager = if defined?(Pod::SourcesManager)
+            Pod::SourcesManager
+          else
+            config.sources_manager
+          end
+        
         puts "#{"==>".magenta} updating repositories"
-        SourcesManager.update
+        sources_manager.update
 
         for spec in specs
           name = spec.gsub(".podspec", "")
           version = Specification.from_file(spec).version
           name = Specification.from_file(spec).name
 
-          sources = SourcesManager.all.select { |r| r.name == "master" || r.url.start_with?("git") }
+          sources = sources_manager.all.select { |r| r.name == "master" || r.url.start_with?("git") }
           sources = sources.select { |s| s.name == @repo } if @repo
           pushed_sources = []
-          available_sources = SourcesManager.all.map { |r| r.name }
+          available_sources = sources_manager.all.map { |r| r.name }
 
           abort "Please run #{"pod install".green} to continue" if sources.count == 0
           for source in sources
