@@ -16,9 +16,11 @@ module Pod
 
       def self.options
         [
+          ['--skip-lint', 'Skip linting'],
           ['--allow-warnings', 'Allows push even if there are lint warnings'],
           ['--carthage', 'Validates project for carthage deployment'],
           ['--reverse', 'Validates and pushes podspecs in reverse order'],
+          ['--verbose', 'Show more debugging information'],
         ].concat(super.reject { |option, _| option == '--silent' })
       end
 
@@ -28,6 +30,9 @@ module Pod
         @repo = argv.shift_argument unless argv.arguments.empty?
         @carthage = argv.flag?('carthage')
         @reverse = argv.flag?('reverse')
+        @verbose = argv.flag?('verbose') ? "--verbose" : ""
+        @use_libraries = argv.flag?('use-libraries') ? "--use-libraries" : ""
+        @skip_lint = argv.flag?('skip-lint')
         super
       end
 
@@ -51,8 +56,10 @@ module Pod
           version = Specification.from_file(spec).version
           name = Specification.from_file(spec).name
 
-          sources = sources_manager.all.select { |r| r.name == "master" || r.url.start_with?("git") }
+          #sources = sources_manager.all.select { |r| r.name == "master" || r.url.start_with?("git") }
+          sources = sources_manager.all
           sources = sources.select { |s| s.name == @repo } if @repo
+
           pushed_sources = []
           available_sources = sources_manager.all.map { |r| r.name }
 
@@ -87,22 +94,25 @@ module Pod
             abort
           end
 
-          # verify lib
-          execute "pod lib lint #{spec} #{@allow_warnings} --sources=#{available_sources.join(',')}"
-          execute "pod lib lint #{spec} --use-libraries #{@allow_warnings} --sources=#{available_sources.join(',')}"
+          if !@skip_lint
+            # verify lib
+            execute "pod lib lint #{spec} #{@use_libraries} #{@allow_warnings} --sources=#{available_sources.join(',')}"
+          end
 
           if @carthage
             execute "carthage build --no-skip-current"
           end
 
-          # TODO: create git tag for current version
+          # Create git tag for current version
+          puts "#{"==>".magenta} Tagging repository with version #{"#{version}".green}"
+
           unless system("git tag | grep #{version} > /dev/null")
-            execute "git add -A && git commit -m \"Releases #{version}.\"", :optional => true
+            execute "git add -A && git commit -m \"Release #{version}\"", :optional => true
             execute "git tag #{version}"
             execute "git push && git push --tags"
           end
 
-          repo = @repo || pushed_sources.first.name
+          repo = @repo || pushed_sources.first
           if repo == "master"
             execute "pod trunk push #{spec} #{@allow_warnings}"
           else
